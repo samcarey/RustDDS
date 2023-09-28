@@ -81,6 +81,8 @@ pub(crate) enum DiscoveredVia {
   Topic,        // explicitly, via the topic topic (does this actually occur?)
   Publication,  // we discovered there is a writer on this topic
   Subscription, // we discovered a reader on this topic
+  TopicPreviouslyPublication,
+  TopicPreviouslySubscription,
 }
 
 fn move_by_guid_prefix<D>(
@@ -515,7 +517,7 @@ impl DiscoveryDB {
     &mut self,
     dtd: &DiscoveredTopicData,
     updater: GUID,
-    discovered_via: DiscoveredVia,
+    mut discovered_via: DiscoveredVia,
   ) {
     trace!("Update topic data: {:?}", &dtd);
     let topic_name = dtd.topic_data.name.clone();
@@ -529,6 +531,15 @@ impl DiscoveryDB {
         {
           // If this discovery was from Topic topic and the old was not, then update
           if discovered_via == DiscoveredVia::Topic {
+            match old_dtd.0 {
+              DiscoveredVia::Publication | DiscoveredVia::TopicPreviouslyPublication => {
+                discovered_via = DiscoveredVia::TopicPreviouslyPublication;
+              }
+              DiscoveredVia::Subscription | DiscoveredVia::TopicPreviouslySubscription => {
+                discovered_via = DiscoveredVia::TopicPreviouslySubscription;
+              }
+              _ => {}
+            }
             *old_dtd = (discovered_via, dtd.clone()); // update QoS
             notify = true;
           } else {
@@ -624,6 +635,27 @@ impl DiscoveryDB {
       .iter()
       .filter(|(s, _)| !s.starts_with("DCPS"))
       .flat_map(|(_, gm)| gm.iter().map(|(_, dtd)| &dtd.1))
+  }
+
+  pub fn external_writers<'a>(
+    &'a self,
+    ignore_prefixes: &'a Vec<GuidPrefix>,
+  ) -> impl Iterator<Item = &'a DiscoveredTopicData> {
+    let me = self.my_guid.prefix;
+    self
+      .topics
+      .iter()
+      .filter(|(s, _)| !s.starts_with("DCPS"))
+      .flat_map(move |(_, gm)| {
+        gm.iter()
+          .filter(move |(guid, _)| **guid != me)
+          .filter(move |(guid, _)| !ignore_prefixes.contains(guid))
+          .filter(|(_, (discovered_via, _))| {
+            discovered_via == &DiscoveredVia::TopicPreviouslyPublication
+              || discovered_via == &DiscoveredVia::Publication
+          })
+          .map(|(_, dtd)| &dtd.1)
+      })
   }
 
   // as above, but only from my GUID

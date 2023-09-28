@@ -53,7 +53,7 @@ impl Timestamp {
   };
 
   pub fn now() -> Self {
-    Self::from_nanos(chrono::Utc::now().timestamp_nanos() as u64)
+    Self::from_nanos(chrono::Utc::now().timestamp_nanos_opt().unwrap() as u64)
   }
 
   fn to_ticks(self) -> u64 {

@@ -420,6 +420,10 @@ impl DomainParticipant {
     self.dpi.lock().unwrap().discovered_topics()
   }
 
+  pub fn external_writers(&self, ignore_prefixes: &Vec<GuidPrefix>) -> Vec<DiscoveredTopicData> {
+    self.dpi.lock().unwrap().external_writers(ignore_prefixes)
+  }
+
   /// Manually asserts liveliness, affecting all writers with
   /// LIVELINESS QoS of MANUAL_BY_PARTICIPANT created by
   /// this particular participant.
@@ -707,6 +711,10 @@ impl DomainParticipantDisc {
     self.dpi.lock().unwrap().discovered_topics()
   }
 
+  pub fn external_writers(&self, ignore_prefixes: &Vec<GuidPrefix>) -> Vec<DiscoveredTopicData> {
+    self.dpi.lock().unwrap().external_writers(ignore_prefixes)
+  }
+
   pub(crate) fn dds_cache(&self) -> Arc<RwLock<DDSCache>> {
     self.dpi.lock().unwrap().dds_cache()
   }
@@ -992,7 +1000,10 @@ impl DomainParticipantInner {
 
     info!(
       "New DomainParticipantInner: domain_id={:?} participant_id={:?} GUID={:?} security={}",
-      domain_id, participant_id, participant_guid, cfg!(security)
+      domain_id,
+      participant_id,
+      participant_guid,
+      cfg!(security)
     );
 
     Ok(Self {
@@ -1204,6 +1215,15 @@ impl DomainParticipantInner {
       .unwrap_or_else(|e| panic!("DiscoveryDB is poisoned. {e:?}"));
 
     db.all_user_topics().cloned().collect()
+  }
+
+  pub fn external_writers(&self, ignore_prefixes: &Vec<GuidPrefix>) -> Vec<DiscoveredTopicData> {
+    let db = self
+      .discovery_db
+      .read()
+      .unwrap_or_else(|e| panic!("DiscoveryDB is poisoned. {e:?}"));
+
+    db.external_writers(ignore_prefixes).cloned().collect()
   }
 } // impl
 
