@@ -1,7 +1,7 @@
 use std::{
   cmp::max,
   collections::{BTreeMap, HashMap},
-  ops::Bound::{Excluded, Included, Unbounded},
+  ops::Bound::{Excluded, Included},
   sync::{Arc, Mutex},
 };
 
@@ -258,8 +258,6 @@ impl TopicCache {
       self
         .changes
         .range((Excluded(start_instant), Included(end_instant)))
-        // .filter(move |(_,cc)| ! limit_by_reliability || cc.sequence_number <
-        // self.reliable_before(cc.writer_guid) )
         .map(|(i, c)| (*i, c)),
     )
   }
@@ -278,6 +276,8 @@ impl TopicCache {
             .cloned()
             .unwrap_or(SequenceNumber::zero());
           let upper_bound_exc = self.reliable_before(*guid);
+          // make sure lower < upper, so that `.range()` does not panic.
+          let upper_bound_exc = max(upper_bound_exc, lower_bound_exc.plus_1() );
           sn_map.range((Excluded(lower_bound_exc), Excluded(upper_bound_exc)))
         }) // we get iterator of Timestamp
         .filter_map(|(_sn, t)| self.get_change(t).map(|cc| (*t, cc))),
@@ -347,20 +347,6 @@ impl TopicCache {
     // update also SequenceNumber map
     for r in to_remove.values() {
       self.remove_sn(r);
-    }
-  }
-
-  /// Removes changes and sequence numbers corresponding to a writer GUID
-  /// starting from the given sequence number. To be called when a writer is
-  /// rediscovered, so that the old unread changes do not get mixed up with
-  /// incoming ones.
-  pub fn clear_starting_from(&mut self, writer: GUID, starting_sequence_number: SequenceNumber) {
-    if let Some(sn_to_ts) = self.sequence_numbers.get(&writer).cloned() {
-      for (_, time_stamp) in sn_to_ts.range((Included(starting_sequence_number), Unbounded)) {
-        if let Some(cache_change) = self.changes.remove(time_stamp) {
-          self.remove_sn(&cache_change);
-        }
-      }
     }
   }
 
